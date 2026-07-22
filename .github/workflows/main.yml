@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. سحب الكود المصلح من المستودع
+      # 1. سحب الكود من المستودع
       - name: Checkout Repository
         uses: actions/checkout@v4
 
@@ -26,8 +26,8 @@ jobs:
       - name: Unzip project files
         run: unzip *.zip -d project_dir
 
-      # 4. بناء الـ APK مباشرة بالاعتماد على كودك الجديد المصلح
-      - name: Build Android Project
+      # 4. بناء وتوقيع الـ Release APK
+      - name: Build and Sign Release APK
         env:
           _JAVA_OPTIONS: "-Djava.awt.headless=true"
           GRADLE_OPTS: "-Djava.awt.headless=true -Dorg.gradle.jvmargs=-Djava.awt.headless=true"
@@ -43,20 +43,44 @@ jobs:
           gradle wrapper
           chmod +x gradlew
           
-          echo "🛠️ 2. توليد مفتاح التوقيع الافتراضي للـ Debug..."
-          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          echo "🛠️ 2. إنشاء مفتاح Release دائم للتوقيع..."
+          keytool -genkey -v -keystore release.keystore \
+            -alias cashier_alias \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass "CashierStorePass123" \
+            -keypass "CashierKeyPass123" \
+            -dname "CN=Cashier POS, OU=POS Unit, O=POS App, L=Basra, C=IQ"
 
           echo "🛠️ 3. التحقق من وجود ملف الخدمات لجوجل (Google Services)..."
           if [ ! -f "app/google-services.json" ]; then
             echo '{"project_info": {"project_number": "123456789", "project_id": "casher-mock-id"}, "client": [{"client_info": {"mobilesdk_app_id": "1:123456789:android:123456", "android_client_info": {"package_name": "com.aistudio.restaurantpos.vmdjqk"}}, "api_key": [{"current_key": "mock_api_key_here"}]}]}' > app/google-services.json
           fi
 
-          echo "🚀 4. بدء عملية الكومبايل وبناء نسخة الـ APK النهائية..."
-          ./gradlew assembleDebug --no-daemon
+          echo "🚀 4. بناء نسخة الـ Release..."
+          ./gradlew assembleRelease --no-daemon
 
-      # 5. استخراج ملف الـ APK النهائي الجاهز للتثبيت والطباعة الفعلية
-      - name: Upload APK Artifact
+          echo "🛠️ 5. محاذاة وتوقيع الـ APK النهائي..."
+          BUILD_TOOLS_DIR=$(ls -d $ANDROID_HOME/build-tools/* | tail -n 1)
+          UNSIGNED_APK=$(find app/build/outputs/apk/release -name "*-unsigned.apk" -o -name "*-release-unsigned.apk" | head -n 1)
+          
+          if [ -z "$UNSIGNED_APK" ]; then
+            # في حال تم التوليد كـ release مباشر
+            UNSIGNED_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          fi
+
+          $BUILD_TOOLS_DIR/zipalign -v -p 4 "$UNSIGNED_APK" app/build/outputs/apk/release/app-release-aligned.apk
+          $BUILD_TOOLS_DIR/apksigner sign --ks release.keystore \
+            --ks-key-alias cashier_alias \
+            --ks-pass pass:CashierStorePass123 \
+            --key-pass pass:CashierKeyPass123 \
+            --out app/build/outputs/apk/release/app-release-signed.apk \
+            app/build/outputs/apk/release/app-release-aligned.apk
+
+          echo "✅ تم بناء وتوقيع الـ Release APK بنجاح!"
+
+      # 5. استخراج ملف الـ APK النهائي الجاهز للثبيت
+      - name: Upload Signed Release APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug-apk
-          path: project_dir/**/build/outputs/apk/debug/*.apk
+          name: Cashier-POS-Release
+          path: project_dir/**/build/outputs/apk/release/app-release-signed.apk
