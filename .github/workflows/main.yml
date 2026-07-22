@@ -26,7 +26,7 @@ jobs:
       - name: Unzip project files
         run: unzip *.zip -d project_dir
 
-      # 4. بناء وتوقيع الـ Release APK
+      # 4. بناء وتوقيع الـ Release APK مع تمرير الخواص المطلوبة
       - name: Build and Sign Release APK
         env:
           _JAVA_OPTIONS: "-Djava.awt.headless=true"
@@ -43,7 +43,7 @@ jobs:
           gradle wrapper
           chmod +x gradlew
           
-          echo "🛠️ 2. إنشاء ملف التوقيع my-upload-key.jks الذي يطلبه Gradle..."
+          echo "🛠️ 2. إنشاء ملف التوقيع my-upload-key.jks..."
           keytool -genkey -v -keystore my-upload-key.jks \
             -alias key0 \
             -keyalg RSA -keysize 2048 -validity 10000 \
@@ -51,13 +51,34 @@ jobs:
             -keypass "android" \
             -dname "CN=POS App, OU=POS, O=POS, L=Basra, C=IQ"
 
-          echo "🛠️ 3. التحقق من وجود ملف الخدمات لجوجل (Google Services)..."
+          echo "🛠️ 3. كتابة خواص التوقيع في ملف gradle.properties لمنع النقص..."
+          echo "MYAPP_RELEASE_STORE_FILE=my-upload-key.jks" >> gradle.properties
+          echo "MYAPP_RELEASE_STORE_PASSWORD=android" >> gradle.properties
+          echo "MYAPP_RELEASE_KEY_ALIAS=key0" >> gradle.properties
+          echo "MYAPP_RELEASE_KEY_PASSWORD=android" >> gradle.properties
+          
+          # استبدال إضافي في حالة استخدام مسميات متغيرة أخرى داخل build.gradle
+          echo "RELEASE_STORE_FILE=my-upload-key.jks" >> gradle.properties
+          echo "RELEASE_STORE_PASSWORD=android" >> gradle.properties
+          echo "RELEASE_KEY_ALIAS=key0" >> gradle.properties
+          echo "RELEASE_KEY_PASSWORD=android" >> gradle.properties
+          echo "storePassword=android" >> gradle.properties
+          echo "keyPassword=android" >> gradle.properties
+          echo "keyAlias=key0" >> gradle.properties
+          echo "storeFile=my-upload-key.jks" >> gradle.properties
+
+          echo "🛠️ 4. التحقق من وجود ملف الخدمات لجوجل (Google Services)..."
           if [ ! -f "app/google-services.json" ]; then
             echo '{"project_info": {"project_number": "123456789", "project_id": "casher-mock-id"}, "client": [{"client_info": {"mobilesdk_app_id": "1:123456789:android:123456", "android_client_info": {"package_name": "com.aistudio.restaurantpos.vmdjqk"}}, "api_key": [{"current_key": "mock_api_key_here"}]}]}' > app/google-services.json
           fi
 
-          echo "🚀 4. بناء نسخة الـ Release..."
-          ./gradlew assembleRelease --no-daemon
+          echo "🚀 5. بناء نسخة الـ Release بتمرير خواص التوقيع المباشرة..."
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file=$(pwd)/my-upload-key.jks \
+            -Pandroid.injected.signing.store.password=android \
+            -Pandroid.injected.signing.key.alias=key0 \
+            -Pandroid.injected.signing.key.password=android \
+            --no-daemon
 
       # 5. رفع ملف الـ APK الناتج ليكون جاهزاً للتحميل
       - name: Upload Signed Release APK
