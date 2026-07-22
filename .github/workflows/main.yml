@@ -43,13 +43,13 @@ jobs:
           gradle wrapper
           chmod +x gradlew
           
-          echo "🛠️ 2. إنشاء مفتاح Release دائم للتوقيع..."
-          keytool -genkey -v -keystore release.keystore \
-            -alias cashier_alias \
+          echo "🛠️ 2. إنشاء ملف التوقيع my-upload-key.jks الذي يطلبه Gradle..."
+          keytool -genkey -v -keystore my-upload-key.jks \
+            -alias key0 \
             -keyalg RSA -keysize 2048 -validity 10000 \
-            -storepass "CashierStorePass123" \
-            -keypass "CashierKeyPass123" \
-            -dname "CN=Cashier POS, OU=POS Unit, O=POS App, L=Basra, C=IQ"
+            -storepass "android" \
+            -keypass "android" \
+            -dname "CN=POS App, OU=POS, O=POS, L=Basra, C=IQ"
 
           echo "🛠️ 3. التحقق من وجود ملف الخدمات لجوجل (Google Services)..."
           if [ ! -f "app/google-services.json" ]; then
@@ -59,28 +59,9 @@ jobs:
           echo "🚀 4. بناء نسخة الـ Release..."
           ./gradlew assembleRelease --no-daemon
 
-          echo "🛠️ 5. محاذاة وتوقيع الـ APK النهائي..."
-          BUILD_TOOLS_DIR=$(ls -d $ANDROID_HOME/build-tools/* | tail -n 1)
-          UNSIGNED_APK=$(find app/build/outputs/apk/release -name "*-unsigned.apk" -o -name "*-release-unsigned.apk" | head -n 1)
-          
-          if [ -z "$UNSIGNED_APK" ]; then
-            # في حال تم التوليد كـ release مباشر
-            UNSIGNED_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
-          fi
-
-          $BUILD_TOOLS_DIR/zipalign -v -p 4 "$UNSIGNED_APK" app/build/outputs/apk/release/app-release-aligned.apk
-          $BUILD_TOOLS_DIR/apksigner sign --ks release.keystore \
-            --ks-key-alias cashier_alias \
-            --ks-pass pass:CashierStorePass123 \
-            --key-pass pass:CashierKeyPass123 \
-            --out app/build/outputs/apk/release/app-release-signed.apk \
-            app/build/outputs/apk/release/app-release-aligned.apk
-
-          echo "✅ تم بناء وتوقيع الـ Release APK بنجاح!"
-
-      # 5. استخراج ملف الـ APK النهائي الجاهز للثبيت
+      # 5. رفع ملف الـ APK الناتج ليكون جاهزاً للتحميل
       - name: Upload Signed Release APK
         uses: actions/upload-artifact@v4
         with:
           name: Cashier-POS-Release
-          path: project_dir/**/build/outputs/apk/release/app-release-signed.apk
+          path: project_dir/**/build/outputs/apk/release/*.apk
